@@ -138,18 +138,43 @@ jobs:
           name: app-jar
           path: target
 
-      - name: Download Terraform Files
+      - name: Download Terraform Plan
         uses: actions/download-artifact@v4
         with:
-          name: terraform-files
-          path: terraform-download
+          name: terraform-plan
+          path: terraform
+
+      - name: Download Terraform Lock
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-lock
+          path: terraform
+        continue-on-error: true
+
+      - name: Debug Downloaded Files
+        run: |
+          find terraform -type f | sort
+
+      - name: Prepare Terraform Environment
+        run: |
+          cd terraform
+          # Rename the lock file back to its original name if it exists
+          if [ -f terraform-lock.hcl ]; then
+            cp terraform-lock.hcl .terraform.lock.hcl
+            echo "Lock file restored"
+          else
+            echo "No lock file downloaded"
+          fi
+          ls -la
 
       - name: Initialize Terraform
         run: |
-          cp terraform-download/tfplan terraform/
-          cp terraform-download/.terraform.lock.hcl terraform/ || true
           cd terraform
           terraform init
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -169,7 +194,8 @@ jobs:
       - name: Apply Terraform
         run: |
           cd terraform
-          terraform apply -auto-approve tfplan
+          ls -la
+          terraform apply -auto-approve
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_region: ${{ env.REGION }}
