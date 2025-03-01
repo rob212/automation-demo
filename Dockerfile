@@ -1,18 +1,20 @@
-FROM eclipse-temurin:17-jdk AS build
-WORKDIR /workspace/app
+FROM eclipse-temurin:17-jre-alpine
 
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
-COPY src src
+WORKDIR /app
 
-RUN ./mvnw package -DskipTests
-RUN mkdir -p target/dependency && (cd target/dependency; jar -xf ../*.jar)
+# Add a spring user to run our application
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
 
-FROM eclipse-temurin:17-jre
-VOLUME /tmp
-ARG DEPENDENCY=/workspace/app/target/dependency
-COPY --from=build ${DEPENDENCY}/BOOT-INF/lib /app/lib
-COPY --from=build ${DEPENDENCY}/META-INF /app/META-INF
-COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /app
-ENTRYPOINT ["java","-cp","app:app/lib/*","com.example.demoapi.DemoApiApplication"]
+# Copy the JAR file
+COPY --chown=spring:spring target/*.jar app.jar
+
+# Set environment variables
+ENV SPRING_PROFILES_ACTIVE=prod
+
+# This is important - Cloud Run sets a PORT environment variable
+# and your application needs to listen on that port
+EXPOSE 8080
+
+# Run the jar file
+ENTRYPOINT ["java","-jar","/app/app.jar"]
