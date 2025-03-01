@@ -81,10 +81,25 @@ jobs:
           cd terraform
           terraform init
 
-      - name: Terraform Format Check
+      - name: Terraform Format
         run: |
           cd terraform
-          terraform fmt -check
+          terraform fmt
+
+      - name: Commit Terraform Format Changes
+        # Only run if there are changes to commit
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          if git diff --exit-code --quiet; then
+            echo "No changes to commit"
+          else
+            git add terraform/*.tf
+            git commit -m "Apply Terraform formatting"
+            git push
+          fi
+        # This step should only run on pushes to main, not on PRs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
       - name: Terraform Validate
         run: |

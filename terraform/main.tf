@@ -5,7 +5,7 @@ terraform {
       version = "~> 4.0"
     }
   }
-  
+
   backend "gcs" {
     bucket = "tf-state-spring-boot-api"
     prefix = "terraform/state"
@@ -60,14 +60,14 @@ resource "google_cloud_run_service" "spring_boot_api" {
     spec {
       containers {
         image = "${var.region}-docker.pkg.dev/${var.project_id}/spring-boot-api/${var.service_name}:latest"
-        
+
         resources {
           limits = {
             cpu    = "1000m"
             memory = "512Mi"
           }
         }
-        
+
         env {
           name  = "SPRING_PROFILES_ACTIVE"
           value = "prod"
