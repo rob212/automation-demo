@@ -56,15 +56,15 @@ jobs:
           path: target/*.jar
           retention-days: 1
 
-  terraform-plan:
-    name: Terraform Plan
+  terraform-plan-and-apply:
+    name: Terraform Plan and Apply
     needs: build-and-test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -75,9 +75,6 @@ jobs:
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Initialize Terraform
         run: |
@@ -112,28 +109,31 @@ jobs:
       - name: Terraform Plan
         run: |
           cd terraform
-          terraform plan -out=tfplan
+          terraform plan
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_region: ${{ env.REGION }}
           TF_VAR_service_name: ${{ env.SERVICE_NAME }}
 
-      - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan
-          path: terraform/tfplan
-          retention-days: 1
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: |
+          cd terraform
+          terraform apply -auto-approve
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
 
   deploy:
     name: Deploy to GCP
-    needs: [build-and-test, terraform-plan]
+    needs: [build-and-test, terraform-plan-and-apply]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -147,49 +147,6 @@ jobs:
           find target -type f | sort
           ls -la target
 
-      - name: Download Terraform Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan
-          path: terraform
-
-      - name: Download Terraform Lock
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-lock
-          path: terraform
-        continue-on-error: true
-
-      - name: Debug Downloaded Files
-        run: |
-          find terraform -type f | sort
-
-      - name: Prepare Terraform Environment
-        run: |
-          cd terraform
-          # Rename the lock file back to its original name if it exists
-          if [ -f terraform-lock.hcl ]; then
-            cp terraform-lock.hcl .terraform.lock.hcl
-            echo "Lock file restored"
-          else
-            echo "No lock file downloaded"
-          fi
-          ls -la
-
-      - name: Initialize Terraform
-        run: |
-          cd terraform
-          terraform init
-        env:
-          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-          TF_VAR_region: ${{ env.REGION }}
-          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.0
-
       - name: Setup Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
         with:
@@ -200,15 +157,8 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Apply Terraform
-        run: |
-          cd terraform
-          ls -la
-          terraform apply -auto-approve
-        env:
-          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-          TF_VAR_region: ${{ env.REGION }}
-          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and Push Docker image to Artifact Registry
         uses: google-github-actions/setup-gcloud@v1
