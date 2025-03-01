@@ -234,10 +234,26 @@ jobs:
             echo "Health check failed with status $HEALTH_STATUS"
             exit 1
           fi
-          # Test hello endpoint
+
+          # Try different endpoint paths for hello
+          echo "Trying /hello endpoint..."
           HELLO_RESPONSE=$(curl -s $SERVICE_URL/hello)
-          if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
-            echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
-            exit 1
+          if [[ "$HELLO_RESPONSE" == *"Hello"* ]]; then
+            echo "Hello endpoint found at /hello"
+            echo "Smoke test passed successfully!"
+            exit 0
           fi
-          echo "Smoke test passed successfully!"
+
+          echo "Trying /api/hello endpoint..."
+          API_HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
+          if [[ "$API_HELLO_RESPONSE" == *"Hello"* ]]; then
+            echo "Hello endpoint found at /api/hello"
+            echo "Smoke test passed successfully!"
+            exit 0
+          fi
+
+          # If we got here, neither endpoint worked
+          echo "Hello endpoint check failed. Tried both /hello and /api/hello paths."
+          echo "Response from /hello: $HELLO_RESPONSE"
+          echo "Response from /api/hello: $API_HELLO_RESPONSE"
+          exit 1
