@@ -1,0 +1,193 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # Allows manual triggering
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: spring-boot-api
+  REGION: us-central1
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Validate Maven project
+        run: mvn validate
+
+      - name: Static Code Analysis
+        run: mvn checkstyle:check
+
+      - name: Build with Maven
+        run: mvn -B package -DskipTests
+
+      - name: Run Unit Tests
+        run: mvn test
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image for testing
+        run: docker build -t spring-boot-api:test .
+
+      - name: Run API Tests with Testcontainers
+        run: mvn verify -Dskip.unit.tests=true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 1
+
+  terraform-plan:
+    name: Terraform Plan
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Initialize Terraform
+        run: |
+          cd terraform
+          terraform init
+
+      - name: Terraform Format Check
+        run: |
+          cd terraform
+          terraform fmt -check
+
+      - name: Terraform Validate
+        run: |
+          cd terraform
+          terraform validate
+
+      - name: Terraform Plan
+        run: |
+          cd terraform
+          terraform plan -out=tfplan
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-plan
+          path: terraform/tfplan
+          retention-days: 1
+
+  deploy:
+    name: Deploy to GCP
+    needs: [build-and-test, terraform-plan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: app-jar
+          path: target
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-plan
+          path: terraform
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Apply Terraform
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
+
+      - name: Build and Push Docker image to Artifact Registry
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build and Push Docker image
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v1
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Smoke Test Deployment
+        run: |
+          export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "Service URL: $SERVICE_URL"
+          # Wait for service to be fully deployed
+          sleep 30
+          # Test health endpoint
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "Health check failed with status $HEALTH_STATUS"
+            exit 1
+          fi
+          # Test hello endpoint
+          HELLO_RESPONSE=$(curl -s $SERVICE_URL/hello)
+          if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
+            echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
+            exit 1
+          fi
+          echo "Smoke test passed successfully!"
