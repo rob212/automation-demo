@@ -33,8 +33,7 @@ resource "google_cloud_run_service" "spring_boot_api" {
   template {
     spec {
       containers {
-       # image = "${var.region}-docker.pkg.dev/${var.project_id}/spring-boot-api/${var.service_name}:latest"
-         image = "gcr.io/google-samples/hello-app:1.0"
+        image = "${var.region}-docker.pkg.dev/${var.project_id}/spring-boot-api/${var.service_name}:latest"
         
         resources {
           limits = {

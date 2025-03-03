@@ -50,7 +50,8 @@ resource "google_project_iam_member" "service_account_roles" {
     "roles/run.admin",                # Manage Cloud Run services
     "roles/artifactregistry.writer",  # Push to Artifact Registry
     "roles/storage.admin",            # Full access to GCS (for Terraform state)
-    "roles/iam.serviceAccountUser"    # Use service accounts
+    "roles/iam.serviceAccountUser",   # Use service accounts
+    "roles/resourcemanager.projectIamAdmin"  # Manage project IAM bindings
   ])
   
   project = var.project_id
