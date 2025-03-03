@@ -49,7 +49,7 @@ resource "google_project_iam_member" "service_account_roles" {
   for_each = toset([
     "roles/run.admin",                # Manage Cloud Run services
     "roles/artifactregistry.writer",  # Push to Artifact Registry
-    "roles/storage.objectViewer",     # Read access to storage (for Terraform state)
+    "roles/storage.admin",            # Full access to GCS (for Terraform state)
     "roles/iam.serviceAccountUser"    # Use service accounts
   ])
   
