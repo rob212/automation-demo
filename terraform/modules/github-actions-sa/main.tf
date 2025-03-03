@@ -1,5 +1,22 @@
 # Enable required APIs
+resource "google_service_account" "github_actions" {
+  project      = var.project_id
+  account_id   = var.service_account_id
+  display_name = "GitHub Actions Service Account for ${var.environment}"
+  description  = "Service account used by GitHub Actions to deploy to ${var.environment}"
+}
+
+# First, assign the Service Usage Admin role
+resource "google_project_iam_member" "service_usage_admin" {
+  project = var.project_id
+  role    = "roles/serviceusage.serviceUsageAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# Then enable required APIs
 resource "google_project_service" "required_apis" {
+  depends_on = [google_project_iam_member.service_usage_admin]
+  
   for_each = toset([
     "artifactregistry.googleapis.com",
     "run.googleapis.com",
@@ -14,28 +31,21 @@ resource "google_project_service" "required_apis" {
   disable_on_destroy        = false
 }
 
-resource "google_service_account" "github_actions" {
-  project      = var.project_id
-  account_id   = var.service_account_id
-  display_name = "GitHub Actions Service Account for ${var.environment}"
-  description  = "Service account used by GitHub Actions to deploy to ${var.environment}"
-  
-  depends_on = [google_project_service.required_apis]
-}
-
 # Create Artifact Registry Repository
 resource "google_artifact_registry_repository" "app_repository" {
+  depends_on = [google_project_service.required_apis]
+  
   project       = var.project_id
   location      = var.region
   repository_id = "spring-boot-api"
   description   = "Docker repository for Spring Boot API"
   format        = "DOCKER"
-  
-  depends_on = [google_project_service.required_apis]
 }
 
-# Minimum required roles for CI/CD pipeline
+# Assign remaining required roles
 resource "google_project_iam_member" "service_account_roles" {
+  depends_on = [google_project_service.required_apis]
+  
   for_each = toset([
     "roles/run.admin",                # Manage Cloud Run services
     "roles/artifactregistry.writer",  # Push to Artifact Registry
@@ -50,6 +60,8 @@ resource "google_project_iam_member" "service_account_roles" {
 
 # Additional environment-specific roles
 resource "google_project_iam_member" "environment_specific_roles" {
+  depends_on = [google_project_service.required_apis]
+  
   for_each = var.environment == "production" ? toset([
     "roles/monitoring.viewer",    # View monitoring in production
     "roles/logging.viewer"        # View logs in production
