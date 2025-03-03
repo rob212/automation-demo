@@ -1,0 +1,4 @@
+dev_project_id     = "your-dev-project"
+staging_project_id = "your-staging-project"
+prod_project_id    = "your-prod-project"
+region            = "us-central1"

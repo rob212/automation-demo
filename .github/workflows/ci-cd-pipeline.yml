@@ -2,10 +2,10 @@ name: CI/CD Pipeline with Gates
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:  # Allows manual triggering
+    branches: [main]
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
   build-and-test:
@@ -13,50 +13,50 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: maven
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
 
-    - name: Validate Maven project
-      run: mvn validate
+      - name: Validate Maven project
+        run: mvn validate
 
-    - name: Static Code Analysis
-      run: mvn checkstyle:check
+      - name: Static Code Analysis
+        run: mvn checkstyle:check
 
-    - name: Build with Maven
-      run: mvn -B package -DskipTests
+      - name: Build with Maven
+        run: mvn -B package -DskipTests
 
-    - name: Run Unit Tests
-      run: mvn test
+      - name: Run Unit Tests
+        run: mvn test
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Build Docker image for testing
-      run: docker build -t spring-boot-api:test .
+      - name: Build Docker image for testing
+        run: docker build -t spring-boot-api:test .
 
-    - name: Run API Tests with Testcontainers
-      run: mvn verify -Dskip.unit.tests=true
+      - name: Run API Tests with Testcontainers
+        run: mvn verify -Dskip.unit.tests=true
 
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-jar
-        path: target/*.jar
-        retention-days: 1
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 1
 
   deploy-to-dev:
     name: Deploy to Development
     needs: build-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    environment: development  # This creates a deployment environment with protection rules
+    environment: development # This creates a deployment environment with protection rules
     env:
       ENVIRONMENT: dev
       PROJECT_ID: ${{ secrets.GCP_PROJECT_DEV }}
@@ -64,97 +64,113 @@ jobs:
       REGION: us-central1
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download build artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: app-jar
-        path: target
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target
 
-    - name: Setup Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
-      with:
-        project_id: ${{ env.PROJECT_ID }}
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY_DEV }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_DEV }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Build and Push Docker image
-      run: |
-        # Configure Docker for Artifact Registry
-        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-        
-        # Build with environment-specific Spring profile
-        docker build \
-          --build-arg SPRING_PROFILES_ACTIVE=${{ env.ENVIRONMENT }} \
-          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest .
-          
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest
+      - name: Enable and Setup Artifact Registry
+        run: |
+          # Enable the Artifact Registry API
+          gcloud services enable artifactregistry.googleapis.com
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.0
+          # Create the repository if it doesn't exist
+          gcloud artifacts repositories describe spring-boot-api \
+            --location=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            2>/dev/null || \
+          gcloud artifacts repositories create spring-boot-api \
+            --repository-format=docker \
+            --location=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --description="Docker repository for Spring Boot API"
 
-    - name: Initialize Terraform
-      run: |
-        cd terraform/environments/dev
-        terraform init
+      - name: Build and Push Docker image
+        run: |
+          # Configure Docker for Artifact Registry
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-    - name: Apply Terraform
-      run: |
-        cd terraform/environments/dev
-        terraform apply -auto-approve
-      env:
-        TF_VAR_project_id: ${{ env.PROJECT_ID }}
-        TF_VAR_region: ${{ env.REGION }}
-        TF_VAR_service_name: ${{ env.SERVICE_NAME }}
-        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+          # Build with environment-specific Spring profile
+          docker build \
+            --build-arg SPRING_PROFILES_ACTIVE=${{ env.ENVIRONMENT }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest .
+            
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest
 
-    - name: Deploy to Cloud Run
-      uses: google-github-actions/deploy-cloudrun@v1
-      with:
-        service: ${{ env.SERVICE_NAME }}
-        region: ${{ env.REGION }}
-        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
 
-    - name: Smoke Test Development
-      run: |
-        export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
-        echo "DEV Service URL: $SERVICE_URL"
-        
-        # Wait for service to be fully deployed
-        sleep 30
-        
-        # Test health endpoint
-        HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
-        if [ "$HEALTH_STATUS" != "200" ]; then
-          echo "Health check failed with status $HEALTH_STATUS"
-          exit 1
-        fi
-        
-        # Test hello endpoint
-        HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
-        if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
-          echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
-          exit 1
-        fi
-        echo "DEV deployment smoke test passed successfully!"
+      - name: Initialize Terraform
+        run: |
+          cd terraform/environments/dev
+          terraform init
+
+      - name: Apply Terraform
+        run: |
+          cd terraform/environments/dev
+          terraform apply -auto-approve
+        env:
+          TF_VAR_project_id: ${{ env.PROJECT_ID }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
+          TF_VAR_environment: ${{ env.ENVIRONMENT }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v1
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Smoke Test Development
+        run: |
+          export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "DEV Service URL: $SERVICE_URL"
+
+          # Wait for service to be fully deployed
+          sleep 30
+
+          # Test health endpoint
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "Health check failed with status $HEALTH_STATUS"
+            exit 1
+          fi
+
+          # Test hello endpoint
+          HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
+          if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
+            echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
+            exit 1
+          fi
+          echo "DEV deployment smoke test passed successfully!"
 
   deploy-to-staging:
     name: Deploy to Staging
     needs: deploy-to-dev
     runs-on: ubuntu-latest
-    environment: staging  # This creates a deployment environment with protection rules
+    environment: staging # This creates a deployment environment with protection rules
     env:
       ENVIRONMENT: staging
       PROJECT_ID: ${{ secrets.GCP_PROJECT_STAGING }}
@@ -162,97 +178,97 @@ jobs:
       REGION: us-central1
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download build artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: app-jar
-        path: target
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target
 
-    - name: Setup Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
-      with:
-        project_id: ${{ env.PROJECT_ID }}
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY_STAGING }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_STAGING }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Build and Push Docker image
-      run: |
-        # Configure Docker for Artifact Registry
-        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-        
-        # Build with environment-specific Spring profile
-        docker build \
-          --build-arg SPRING_PROFILES_ACTIVE=${{ env.ENVIRONMENT }} \
-          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest .
-          
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest
+      - name: Build and Push Docker image
+        run: |
+          # Configure Docker for Artifact Registry
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.0
+          # Build with environment-specific Spring profile
+          docker build \
+            --build-arg SPRING_PROFILES_ACTIVE=${{ env.ENVIRONMENT }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest .
+            
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest
 
-    - name: Initialize Terraform
-      run: |
-        cd terraform/environments/staging
-        terraform init
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
 
-    - name: Apply Terraform
-      run: |
-        cd terraform/environments/staging
-        terraform apply -auto-approve
-      env:
-        TF_VAR_project_id: ${{ env.PROJECT_ID }}
-        TF_VAR_region: ${{ env.REGION }}
-        TF_VAR_service_name: ${{ env.SERVICE_NAME }}
-        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+      - name: Initialize Terraform
+        run: |
+          cd terraform/environments/staging
+          terraform init
 
-    - name: Deploy to Cloud Run
-      uses: google-github-actions/deploy-cloudrun@v1
-      with:
-        service: ${{ env.SERVICE_NAME }}
-        region: ${{ env.REGION }}
-        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+      - name: Apply Terraform
+        run: |
+          cd terraform/environments/staging
+          terraform apply -auto-approve
+        env:
+          TF_VAR_project_id: ${{ env.PROJECT_ID }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
+          TF_VAR_environment: ${{ env.ENVIRONMENT }}
 
-    - name: Smoke Test Staging
-      run: |
-        export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
-        echo "STAGING Service URL: $SERVICE_URL"
-        
-        # Wait for service to be fully deployed
-        sleep 30
-        
-        # Test health endpoint
-        HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
-        if [ "$HEALTH_STATUS" != "200" ]; then
-          echo "Health check failed with status $HEALTH_STATUS"
-          exit 1
-        fi
-        
-        # Test hello endpoint
-        HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
-        if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
-          echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
-          exit 1
-        fi
-        echo "STAGING deployment smoke test passed successfully!"
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v1
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Smoke Test Staging
+        run: |
+          export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "STAGING Service URL: $SERVICE_URL"
+
+          # Wait for service to be fully deployed
+          sleep 30
+
+          # Test health endpoint
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "Health check failed with status $HEALTH_STATUS"
+            exit 1
+          fi
+
+          # Test hello endpoint
+          HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
+          if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
+            echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
+            exit 1
+          fi
+          echo "STAGING deployment smoke test passed successfully!"
 
   deploy-to-production:
     name: Deploy to Production
     needs: deploy-to-staging
     runs-on: ubuntu-latest
-    environment: production  # This creates a deployment environment with protection rules
+    environment: production # This creates a deployment environment with protection rules
     env:
       ENVIRONMENT: prod
       PROJECT_ID: ${{ secrets.GCP_PROJECT_PROD }}
@@ -260,88 +276,88 @@ jobs:
       REGION: us-central1
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download build artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: app-jar
-        path: target
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target
 
-    - name: Setup Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
-      with:
-        project_id: ${{ env.PROJECT_ID }}
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Build and Push Docker image
-      run: |
-        # Configure Docker for Artifact Registry
-        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-        
-        # Build with environment-specific Spring profile
-        docker build \
-          --build-arg SPRING_PROFILES_ACTIVE=${{ env.ENVIRONMENT }} \
-          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest .
-          
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest
+      - name: Build and Push Docker image
+        run: |
+          # Configure Docker for Artifact Registry
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.0
+          # Build with environment-specific Spring profile
+          docker build \
+            --build-arg SPRING_PROFILES_ACTIVE=${{ env.ENVIRONMENT }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest .
+            
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:latest
 
-    - name: Initialize Terraform
-      run: |
-        cd terraform/environments/prod
-        terraform init
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
 
-    - name: Apply Terraform
-      run: |
-        cd terraform/environments/prod
-        terraform apply -auto-approve
-      env:
-        TF_VAR_project_id: ${{ env.PROJECT_ID }}
-        TF_VAR_region: ${{ env.REGION }}
-        TF_VAR_service_name: ${{ env.SERVICE_NAME }}
-        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+      - name: Initialize Terraform
+        run: |
+          cd terraform/environments/prod
+          terraform init
 
-    - name: Deploy to Cloud Run
-      uses: google-github-actions/deploy-cloudrun@v1
-      with:
-        service: ${{ env.SERVICE_NAME }}
-        region: ${{ env.REGION }}
-        image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+      - name: Apply Terraform
+        run: |
+          cd terraform/environments/prod
+          terraform apply -auto-approve
+        env:
+          TF_VAR_project_id: ${{ env.PROJECT_ID }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_service_name: ${{ env.SERVICE_NAME }}
+          TF_VAR_environment: ${{ env.ENVIRONMENT }}
 
-    - name: Smoke Test Production
-      run: |
-        export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
-        echo "PRODUCTION Service URL: $SERVICE_URL"
-        
-        # Wait for service to be fully deployed
-        sleep 30
-        
-        # Test health endpoint
-        HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
-        if [ "$HEALTH_STATUS" != "200" ]; then
-          echo "Health check failed with status $HEALTH_STATUS"
-          exit 1
-        fi
-        
-        # Test hello endpoint
-        HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
-        if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
-          echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
-          exit 1
-        fi
-        echo "PRODUCTION deployment smoke test passed successfully!"
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v1
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/spring-boot-api/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+      - name: Smoke Test Production
+        run: |
+          export SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          echo "PRODUCTION Service URL: $SERVICE_URL"
+
+          # Wait for service to be fully deployed
+          sleep 30
+
+          # Test health endpoint
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $SERVICE_URL/actuator/health)
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "Health check failed with status $HEALTH_STATUS"
+            exit 1
+          fi
+
+          # Test hello endpoint
+          HELLO_RESPONSE=$(curl -s $SERVICE_URL/api/hello)
+          if [[ "$HELLO_RESPONSE" != *"Hello"* ]]; then
+            echo "Hello endpoint check failed. Response: $HELLO_RESPONSE"
+            exit 1
+          fi
+          echo "PRODUCTION deployment smoke test passed successfully!"

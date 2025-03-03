@@ -38,6 +38,7 @@ build/
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
+!*.tfvars.example
 
 # Specific tfvars exclusion
 terraform/service-accounts/terraform.tfvars

@@ -1,57 +1,62 @@
+# Enable required APIs
+resource "google_project_service" "required_apis" {
+  for_each = toset([
+    "artifactregistry.googleapis.com",
+    "run.googleapis.com",
+    "iam.googleapis.com",
+    "cloudresourcemanager.googleapis.com"
+  ])
+  
+  project = var.project_id
+  service = each.value
+  
+  disable_dependent_services = false
+  disable_on_destroy        = false
+}
 
 resource "google_service_account" "github_actions" {
   project      = var.project_id
   account_id   = var.service_account_id
   display_name = "GitHub Actions Service Account for ${var.environment}"
   description  = "Service account used by GitHub Actions to deploy to ${var.environment}"
+  
+  depends_on = [google_project_service.required_apis]
 }
 
-# Assign the Cloud Run Admin role
-resource "google_project_iam_member" "cloud_run_admin" {
+# Create Artifact Registry Repository
+resource "google_artifact_registry_repository" "app_repository" {
+  project       = var.project_id
+  location      = var.region
+  repository_id = "spring-boot-api"
+  description   = "Docker repository for Spring Boot API"
+  format        = "DOCKER"
+  
+  depends_on = [google_project_service.required_apis]
+}
+
+# Minimum required roles for CI/CD pipeline
+resource "google_project_iam_member" "service_account_roles" {
+  for_each = toset([
+    "roles/run.admin",                # Manage Cloud Run services
+    "roles/artifactregistry.writer",  # Push to Artifact Registry
+    "roles/storage.objectViewer",     # Read access to storage (for Terraform state)
+    "roles/iam.serviceAccountUser"    # Use service accounts
+  ])
+  
   project = var.project_id
-  role    = "roles/run.admin"
+  role    = each.value
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# Assign the Artifact Registry Admin role
-resource "google_project_iam_member" "artifact_registry_admin" {
+# Additional environment-specific roles
+resource "google_project_iam_member" "environment_specific_roles" {
+  for_each = var.environment == "production" ? toset([
+    "roles/monitoring.viewer",    # View monitoring in production
+    "roles/logging.viewer"        # View logs in production
+  ]) : toset([])
+  
   project = var.project_id
-  role    = "roles/artifactregistry.admin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-# Assign the Storage Admin role
-resource "google_project_iam_member" "storage_admin" {
-  project = var.project_id
-  role    = "roles/storage.admin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-# Assign the Service Account Admin role
-resource "google_project_iam_member" "service_account_admin" {
-  project = var.project_id
-  role    = "roles/iam.serviceAccountAdmin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-# Assign the Service Usage Admin role
-resource "google_project_iam_member" "service_usage_admin" {
-  project = var.project_id
-  role    = "roles/serviceusage.serviceUsageAdmin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-# Assign the Service Account User role
-resource "google_project_iam_member" "service_account_user" {
-  project = var.project_id
-  role    = "roles/iam.serviceAccountUser"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
-}
-
-# Assign the Project IAM Admin role
-resource "google_project_iam_member" "project_iam_admin" {
-  project = var.project_id
-  role    = "roles/resourcemanager.projectIamAdmin"
+  role    = each.value
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
