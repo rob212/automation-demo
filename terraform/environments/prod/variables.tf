@@ -12,5 +12,10 @@ variable "region" {
 variable "service_name" {
   description = "The name of the Cloud Run service"
   type        = string
-  default     = "spring-boot-api"
+}
+
+variable "environment" {
+  description = "The deployment environment (dev, staging, prod)"
+  type        = string
+  default     = "dev"
 }

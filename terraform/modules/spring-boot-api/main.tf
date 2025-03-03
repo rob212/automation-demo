@@ -1,47 +1,20 @@
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 4.0"
-    }
-  }
-
-  backend "gcs" {
-    bucket = "tf-state-spring-boot-api"
-    prefix = "terraform/state"
-  }
-}
-
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
-
-# Enable required APIs
 resource "google_project_service" "run_api" {
+  project            = var.project_id
   service            = "run.googleapis.com"
   disable_on_destroy = false
 }
 
 resource "google_project_service" "artifactregistry_api" {
+  project            = var.project_id
   service            = "artifactregistry.googleapis.com"
   disable_on_destroy = false
 }
 
-# Create Artifact Registry repository
-resource "google_artifact_registry_repository" "spring_boot_api_repo" {
-  location      = var.region
-  repository_id = "spring-boot-api"
-  description   = "Docker repository for Spring Boot API"
-  format        = "DOCKER"
-
-  depends_on = [google_project_service.artifactregistry_api]
-}
-
 # Create service account for Cloud Run
 resource "google_service_account" "cloud_run_service_account" {
-  account_id   = "spring-boot-api-sa"
-  display_name = "Service Account for Spring Boot API"
+  project      = var.project_id
+  account_id   = "${var.service_name}-sa"
+  display_name = "Service Account for ${var.service_name}"
 }
 
 # Grant necessary permissions to service account
@@ -55,22 +28,33 @@ resource "google_project_iam_member" "cloud_run_invoker" {
 resource "google_cloud_run_service" "spring_boot_api" {
   name     = var.service_name
   location = var.region
+  project  = var.project_id
 
   template {
     spec {
       containers {
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/spring-boot-api/${var.service_name}:latest"
-
+       # image = "${var.region}-docker.pkg.dev/${var.project_id}/spring-boot-api/${var.service_name}:latest"
+         image = "gcr.io/google-samples/hello-app:1.0"
+        
         resources {
           limits = {
-            cpu    = "1000m"
-            memory = "512Mi"
+            cpu    = var.cpu
+            memory = var.memory
           }
         }
-
+        
         env {
           name  = "SPRING_PROFILES_ACTIVE"
-          value = "prod"
+          value = var.environment
+        }
+        
+        # Environment-specific env variables
+        dynamic "env" {
+          for_each = var.env_variables
+          content {
+            name  = env.key
+            value = env.value
+          }
         }
       }
       service_account_name = google_service_account.cloud_run_service_account.email
@@ -83,8 +67,7 @@ resource "google_cloud_run_service" "spring_boot_api" {
   }
 
   depends_on = [
-    google_project_service.run_api,
-    google_artifact_registry_repository.spring_boot_api_repo
+    google_project_service.run_api
   ]
 
   autogenerate_revision_name = true
@@ -92,13 +75,9 @@ resource "google_cloud_run_service" "spring_boot_api" {
 
 # Make the Cloud Run service publicly accessible
 resource "google_cloud_run_service_iam_member" "public_access" {
+  project  = var.project_id
   service  = google_cloud_run_service.spring_boot_api.name
   location = google_cloud_run_service.spring_boot_api.location
   role     = "roles/run.invoker"
   member   = "allUsers"
-}
-
-# Output the service URL
-output "service_url" {
-  value = google_cloud_run_service.spring_boot_api.status[0].url
 }

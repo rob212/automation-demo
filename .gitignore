@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Terraform
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Specific tfvars exclusion
+terraform/service-accounts/terraform.tfvars
