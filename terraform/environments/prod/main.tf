@@ -7,7 +7,7 @@ module "spring_boot_api" {
   environment = var.environment
   
   # Production-specific resource allocations
-  cpu    = "2000m"
+  cpu    = "2"
   memory = "1Gi"
   
   # Production-specific environment variables

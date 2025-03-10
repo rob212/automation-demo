@@ -7,7 +7,7 @@ module "spring_boot_api" {
   environment = var.environment
   
   # Dev-specific resource allocations
-  cpu    = "1000m"
+  cpu    = "1"
   memory = "512Mi"
   
   # Dev-specific environment variables
