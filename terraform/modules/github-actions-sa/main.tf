@@ -51,6 +51,7 @@ resource "google_project_iam_member" "service_account_roles" {
     "roles/artifactregistry.writer",  # Push to Artifact Registry
     "roles/storage.admin",            # Full access to GCS (for Terraform state)
     "roles/iam.serviceAccountUser",   # Use service accounts
+    "roles/iam.serviceAccountAdmin",  # Create and manage service accounts
     "roles/resourcemanager.projectIamAdmin"  # Manage project IAM bindings
   ])
   
