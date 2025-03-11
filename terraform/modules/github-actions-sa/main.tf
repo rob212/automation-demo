@@ -6,8 +6,26 @@ resource "google_service_account" "github_actions" {
   description  = "Service account used by GitHub Actions to deploy to ${var.environment}"
 }
 
+# Enable Service Usage API first using terraform-provider-google-beta
+# This is required before we can enable other APIs
+resource "google_project_service" "enable_service_usage" {
+  project = var.project_id
+  service = "serviceusage.googleapis.com"
+  
+  # Do not disable the API on destroy
+  disable_on_destroy = false
+  
+  # Skip the initial check for API enablement
+  # This is necessary since we're enabling the API that would perform the check
+  provisioner "local-exec" {
+    command = "sleep 60"
+  }
+}
+
 # First, assign the Service Usage Admin role
 resource "google_project_iam_member" "service_usage_admin" {
+  depends_on = [google_project_service.enable_service_usage]
+  
   project = var.project_id
   role    = "roles/serviceusage.serviceUsageAdmin"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
@@ -15,7 +33,10 @@ resource "google_project_iam_member" "service_usage_admin" {
 
 # Then enable required APIs
 resource "google_project_service" "required_apis" {
-  depends_on = [google_project_iam_member.service_usage_admin]
+  depends_on = [
+    google_project_iam_member.service_usage_admin,
+    google_project_service.enable_service_usage
+  ]
   
   for_each = toset([
     "artifactregistry.googleapis.com",

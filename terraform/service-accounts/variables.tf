@@ -1,5 +1,3 @@
-# terraform/service-accounts/variables.tf
-
 variable "dev_project_id" {
   description = "The GCP project ID for development environment"
   type        = string

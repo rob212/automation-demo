@@ -17,5 +17,5 @@ variable "service_name" {
 variable "environment" {
   description = "The deployment environment (dev, staging, prod)"
   type        = string
-  default     = "dev"
+  default     = "staging"
 }

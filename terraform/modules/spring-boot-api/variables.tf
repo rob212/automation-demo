@@ -21,7 +21,7 @@ variable "environment" {
 variable "cpu" {
   description = "CPU allocation for Cloud Run service"
   type        = string
-  default     = "1000m"
+  default     = "1"
 }
 
 variable "memory" {
