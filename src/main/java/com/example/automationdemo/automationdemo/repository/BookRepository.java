@@ -1,6 +1,6 @@
-package com.example.automationdemo.automation_demo.repository;
+package com.example.automationdemo.automationdemo.repository;
 
-import com.example.automationdemo.automation_demo.model.Book;
+import com.example.automationdemo.automationdemo.model.Book;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

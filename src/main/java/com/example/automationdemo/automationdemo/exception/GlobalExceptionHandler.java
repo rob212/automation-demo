@@ -1,4 +1,4 @@
-package com.example.automationdemo.automation_demo.exception;
+package com.example.automationdemo.automationdemo.exception;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

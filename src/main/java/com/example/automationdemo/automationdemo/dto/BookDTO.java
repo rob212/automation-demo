@@ -1,6 +1,6 @@
-package com.example.automationdemo.automation_demo.dto;
+package com.example.automationdemo.automationdemo.dto;
 
-import com.example.automationdemo.automation_demo.model.Book;
+import com.example.automationdemo.automationdemo.model.Book;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.*;
 

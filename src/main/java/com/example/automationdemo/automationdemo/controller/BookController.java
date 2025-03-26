@@ -1,7 +1,7 @@
-package com.example.automationdemo.automation_demo.controller;
+package com.example.automationdemo.automationdemo.controller;
 
-import com.example.automationdemo.automation_demo.dto.BookDTO;
-import com.example.automationdemo.automation_demo.service.BookService;
+import com.example.automationdemo.automationdemo.dto.BookDTO;
+import com.example.automationdemo.automationdemo.service.BookService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

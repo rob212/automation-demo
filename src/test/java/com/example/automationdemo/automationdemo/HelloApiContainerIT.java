@@ -1,4 +1,4 @@
-package com.example.automationdemo.automation_demo;
+package com.example.automationdemo.automationdemo;
 
 import static io.restassured.RestAssured.*;
         import static org.hamcrest.Matchers.*;

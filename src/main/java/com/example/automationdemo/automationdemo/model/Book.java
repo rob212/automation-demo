@@ -1,4 +1,4 @@
-package com.example.automationdemo.automation_demo.model;
+package com.example.automationdemo.automationdemo.model;
 
 import jakarta.persistence.*;
 import lombok.*;

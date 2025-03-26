@@ -1,6 +1,6 @@
-package com.example.automationdemo.automation_demo.repository;
+package com.example.automationdemo.automationdemo.repository;
 
-import com.example.automationdemo.automation_demo.model.Book;
+import com.example.automationdemo.automationdemo.model.Book;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;

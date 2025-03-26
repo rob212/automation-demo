@@ -1,9 +1,9 @@
-package com.example.automationdemo.automation_demo.controller;
+package com.example.automationdemo.automationdemo.controller;
 
-import com.example.automationdemo.automation_demo.dto.BookDTO;
-import com.example.automationdemo.automation_demo.exception.BookNotFoundException;
-import com.example.automationdemo.automation_demo.exception.GlobalExceptionHandler;
-import com.example.automationdemo.automation_demo.service.BookService;
+import com.example.automationdemo.automationdemo.dto.BookDTO;
+import com.example.automationdemo.automationdemo.exception.BookNotFoundException;
+import com.example.automationdemo.automationdemo.exception.GlobalExceptionHandler;
+import com.example.automationdemo.automationdemo.service.BookService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

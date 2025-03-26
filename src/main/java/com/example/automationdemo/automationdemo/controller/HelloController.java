@@ -1,4 +1,4 @@
-package com.example.automationdemo.automation_demo.controller;
+package com.example.automationdemo.automationdemo.controller;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

@@ -1,9 +1,9 @@
-package com.example.automationdemo.automation_demo.service;
+package com.example.automationdemo.automationdemo.service;
 
-import com.example.automationdemo.automation_demo.dto.BookDTO;
-import com.example.automationdemo.automation_demo.exception.BookNotFoundException;
-import com.example.automationdemo.automation_demo.model.Book;
-import com.example.automationdemo.automation_demo.repository.BookRepository;
+import com.example.automationdemo.automationdemo.dto.BookDTO;
+import com.example.automationdemo.automationdemo.exception.BookNotFoundException;
+import com.example.automationdemo.automationdemo.model.Book;
+import com.example.automationdemo.automationdemo.repository.BookRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

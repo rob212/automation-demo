@@ -1,8 +1,8 @@
-package com.example.automationdemo.automation_demo;
+package com.example.automationdemo.automationdemo;
 
-import com.example.automationdemo.automation_demo.dto.BookDTO;
-import com.example.automationdemo.automation_demo.model.Book;
-import com.example.automationdemo.automation_demo.repository.BookRepository;
+import com.example.automationdemo.automationdemo.dto.BookDTO;
+import com.example.automationdemo.automationdemo.model.Book;
+import com.example.automationdemo.automationdemo.repository.BookRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
