@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # Database service
+  postgres:
+    image: postgres:13.3
+    container_name: book-api-postgres
+    environment:
+      POSTGRES_DB: bookdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - book-api-network
+
+  # Application service
+  book-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: book-api-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=bookdb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    ports:
+      - "8080:8080"
+    networks:
+      - book-api-network
+
+networks:
+  book-api-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
