@@ -1,5 +1,5 @@
-# Use OpenJDK 17 as base image
-FROM eclipse-temurin:17-jdk-alpine as build
+# Use Amazon Corretto 17 due to it's arm64 support for  base image
+FROM amazoncorretto:17-alpine as build
 
 # Set working directory
 WORKDIR /app
@@ -21,8 +21,8 @@ COPY src src
 # Build the application
 RUN ./mvnw package -DskipTests
 
-# Create a smaller runtime image
-FROM eclipse-temurin:17-jre-alpine
+# New image without dependencies running as non-root
+FROM amazoncorretto:17-alpine
 
 # Install PostgreSQL client for health checks and debugging
 RUN apk add --no-cache postgresql-client
